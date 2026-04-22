@@ -1,0 +1,130 @@
+/* ============================= 🔥 Shopee Pro 后台系统（升级版） 包含：
+
+1. 订单自动记录 Google Sheets
+
+
+2. 后台管理页面（查看/更新状态）
+
+
+3. 订单状态（Pending / Paid / Packed / Done）
+
+
+4. 一键刷新订单 ============================= */
+
+
+
+/* ============================= 📌 ① Google Apps Script 后端（复制到 Apps Script） ============================= */
+
+const SPREADSHEET_ID = "填你的SheetID"; const SHEET_NAME = "Sheet1"; const FOLDER_ID = "填你的DriveFolderID";
+
+function doPost(e) { try { const data = JSON.parse(e.postData.contents); const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
+
+const lastRow = sheet.getLastRow();
+const orderId = "SP" + String(lastRow + 1).padStart(6, "0");
+
+let imageUrl = "";
+
+if (data.image && data.image.includes(",")) {
+  const blob = Utilities.newBlob(
+    Utilities.base64Decode(data.image.split(",")[1]),
+    "image/png",
+    "payment.png"
+  );
+  imageUrl = DriveApp.getFolderById(FOLDER_ID).createFile(blob).getUrl();
+}
+
+sheet.appendRow([
+  orderId,
+  new Date(),
+  data.name,
+  data.phone,
+  data.address,
+  data.delivery,
+  data.items,
+  data.total,
+  "Pending",
+  imageUrl
+]);
+
+return ContentService
+  .createTextOutput(JSON.stringify({status:"success", orderId}))
+  .setMimeType(ContentService.MimeType.JSON);
+
+} catch (err) { return ContentService .createTextOutput(JSON.stringify({status:"error", message: err.message})) .setMimeType(ContentService.MimeType.JSON); } }
+
+function doGet() { return HtmlService.createHtmlOutputFromFile("admin"); }
+
+function getOrders() { const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME); const data = sheet.getDataRange().getValues(); return data; }
+
+function updateStatus(row, status) { const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME); sheet.getRange(row, 9).setValue(status); return "ok"; }
+
+/* ============================= 📌 ② 后台管理页面（admin.html） ============================= */
+
+<!DOCTYPE html><html>
+<head>
+<meta charset="UTF-8">
+<title>Shopee Pro 后台</title>
+<style>
+body{font-family:Arial;background:#f4f4f4;padding:20px;}
+.container{background:white;padding:20px;border-radius:10px;max-width:1000px;margin:auto;}
+table{width:100%;border-collapse:collapse;}
+th,td{border:1px solid #ddd;padding:8px;text-align:center;}
+button{padding:5px 10px;}
+</style>
+</head>
+<body><div class="container">
+<h2>📦 福满家订单后台</h2>
+<button onclick="loadOrders()">🔄 刷新订单</button>
+<table>
+<thead>
+<tr>
+<th>订单号</th>
+<th>时间</th>
+<th>姓名</th>
+<th>电话</th>
+<th>金额</th>
+<th>状态</th>
+<th>操作</th>
+</tr>
+</thead>
+<tbody id="tb"></tbody>
+</table>
+</div><script>
+const API = "你的WebApp URL";
+
+function loadOrders(){
+  google.script.run.withSuccessHandler(render).getOrders();
+}
+
+function render(data){
+  let html="";
+
+  for(let i=1;i<data.length;i++){
+    let row=data[i];
+
+    html += `<tr>
+      <td>${row[0]}</td>
+      <td>${row[1]}</td>
+      <td>${row[2]}</td>
+      <td>${row[3]}</td>
+      <td>RM ${row[7]}</td>
+      <td>${row[8]}</td>
+      <td>
+        <button onclick="update(${i+1},'Paid')">Paid</button>
+        <button onclick="update(${i+1},'Packed')">Packed</button>
+        <button onclick="update(${i+1},'Done')">Done</button>
+      </td>
+    </tr>`;
+  }
+
+  document.getElementById("tb").innerHTML = html;
+}
+
+function update(row,status){
+  google.script.run.updateStatus(row,status);
+  setTimeout(loadOrders,500);
+}
+
+loadOrders();
+</script></body>
+</html>
